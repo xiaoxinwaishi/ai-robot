@@ -1,0 +1,127 @@
+import pybullet as p
+import pybullet_data as pd
+import time
+import math
+
+# --- 1. 初始化 ---
+p.connect(p.GUI)
+p.setAdditionalSearchPath(pd.getDataPath())
+p.setGravity(0, 0, -9.8)
+p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
+p.resetDebugVisualizerCamera(1.8, 60, -35, [0.5, 0, 0.65])
+
+p.loadURDF("plane.urdf")
+p.loadURDF("table/table.urdf", [0.5, 0, 0], useFixedBase=True)
+
+pandaId = p.loadURDF("franka_panda/panda.urdf", [0.5, 0, 0.625], useFixedBase=True)
+
+# --- 工具函数 ---
+def move_to_joints(target, steps=120):
+    current = [p.getJointState(pandaId, i)[0] for i in range(7)]
+    for step in range(steps):
+        t = (step + 1) / steps
+        for i in range(7):
+            val = current[i] + t * (target[i] - current[i])
+            p.setJointMotorControl2(pandaId, i, p.POSITION_CONTROL, val, force=500)
+        p.stepSimulation()
+        time.sleep(1./120.)
+
+def move_to_xyz(x, y, z, steps=80):
+    state = p.getLinkState(pandaId, 11)
+    start = state[0]
+
+    for step in range(steps):
+        t = (step + 1) / steps
+        px = start[0] + t * (x - start[0])
+        py = start[1] + t * (y - start[1])
+        pz = start[2] + t * (z - start[2])
+
+        joints = p.calculateInverseKinematics(
+            pandaId, 11,
+            [px, py, pz],
+            p.getQuaternionFromEuler([math.pi, 0, 0])
+        )
+
+        for i in range(7):
+            p.setJointMotorControl2(pandaId, i, p.POSITION_CONTROL, joints[i], force=500)
+
+        p.stepSimulation()
+        time.sleep(1./120.)
+
+def draw_line(points, color):
+    for i in range(1, len(points)):
+        p.addUserDebugLine(points[i-1], points[i], color, 2)
+
+# --- 初始姿态 ---
+HOME = [0, -0.5, 0, -2.0, 0, 1.5, 0.8]
+move_to_joints(HOME, 150)
+
+# =====================================================
+# 任务1：画圆（笛卡尔）
+# =====================================================
+cx, cy, cz = 0.6, 0.0, 0.85
+radius = 0.15   # ⚠️ 修正：0.5太大，会超工作空间
+steps = 300
+
+# 起点
+start_x = cx + radius
+start_y = cy
+move_to_xyz(start_x, start_y, cz, 120)
+
+trail_circle = []
+
+for i in range(steps + 1):
+    ang = 2 * math.pi * i / steps
+    x = cx + radius * math.cos(ang)
+    y = cy + radius * math.sin(ang)
+    z = cz
+
+    joints = p.calculateInverseKinematics(
+        pandaId, 11,
+        [x, y, z],
+        p.getQuaternionFromEuler([math.pi, 0, 0])
+    )
+
+    for j in range(7):
+        p.setJointMotorControl2(pandaId, j, p.POSITION_CONTROL, joints[j], force=500)
+
+    p.stepSimulation()
+    time.sleep(1./120.)
+
+    pos = p.getLinkState(pandaId, 11)[0]
+    trail_circle.append(pos)
+
+draw_line(trail_circle, [1, 0, 0])
+
+# =====================================================
+# 任务2：关节空间
+# =====================================================
+move_to_joints(HOME, 120)
+
+start = [0, -0.8, 0, -1.8, 0, 1.2, 0.8]
+end   = [0,  0.8, 0, -1.8, 0, 1.2, 0.8]
+
+move_to_joints(start, 120)
+
+trail_line = []
+steps = 200
+
+for i in range(steps + 1):
+    t = i / steps
+    joints = [start[k] + t * (end[k] - start[k]) for k in range(7)]
+
+    for j in range(7):
+        p.setJointMotorControl2(pandaId, j, p.POSITION_CONTROL, joints[j], force=500)
+
+    p.stepSimulation()
+    time.sleep(1./120.)
+
+    pos = p.getLinkState(pandaId, 11)[0]
+    trail_line.append(pos)
+
+draw_line(trail_line, [0, 1, 0])
+
+# --- 保持运行 ---
+while True:
+    p.stepSimulation()
+    time.sleep(1./60.)
