@@ -12,8 +12,3 @@ theme: jekyll-theme-cayman
 
 # 显示下载按钮（可选）
 show_downloads: false
-推荐主题：
-
-jekyll-theme-cayman：现代简洁，适合技术文档
-jekyll-theme-minimal：极简风格，适合笔记
-jekyll-theme-slate：深色背景，适合代码展示
